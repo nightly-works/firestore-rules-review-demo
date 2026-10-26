@@ -1,0 +1,20 @@
+name: checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  attacks-and-fixes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # The Firestore emulator runs on Java.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - name: 'Attacks work on the rules as delivered, are denied by the fixed rules; normal use works on both'
+        run: npm test

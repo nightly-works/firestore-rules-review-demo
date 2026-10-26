@@ -1,0 +1,73 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isUser(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function userData(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
+    }
+
+    function changedOnly(fields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+    }
+
+    // Private profile: email, phone, role and plan. Only its owner reads it. Role and plan
+    // are written by the server (Admin SDK, payment webhook), never by the app.
+    match /users/{userId} {
+      allow read: if isUser(userId);
+      allow create: if isUser(userId)
+        && request.resource.data.keys().hasOnly(['name', 'email', 'phone', 'role', 'plan'])
+        && request.resource.data.role == 'client'
+        && request.resource.data.plan == 'free';
+      allow update: if isUser(userId) && changedOnly(['name', 'phone']);
+    }
+
+    // Public coach card shown to clients: name, bio and rate only.
+    match /coachProfiles/{coachId} {
+      allow read: if signedIn();
+      allow create, update: if isUser(coachId)
+        && userData(coachId).role == 'coach'
+        && request.resource.data.keys().hasOnly(['name', 'bio', 'rateCents']);
+    }
+
+    match /workouts/{workoutId} {
+      allow read: if signedIn()
+        && (resource.data.premium == false || userData(request.auth.uid).plan == 'premium');
+    }
+
+    // A client requests a session with a real coach at the coach's rate. The coach confirms,
+    // the client may cancel; "paid" is set by the server only.
+    match /bookings/{bookingId} {
+      allow read: if signedIn()
+        && (resource.data.clientId == request.auth.uid || resource.data.coachId == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['clientId', 'coachId', 'slot', 'status', 'priceCents'])
+        && request.resource.data.clientId == request.auth.uid
+        && request.resource.data.status == 'requested'
+        && userData(request.resource.data.coachId).role == 'coach'
+        && request.resource.data.priceCents
+             == get(/databases/$(database)/documents/coachProfiles/$(request.resource.data.coachId)).data.rateCents;
+      allow update: if signedIn() && changedOnly(['status'])
+        && ((request.auth.uid == resource.data.coachId
+              && resource.data.status == 'requested' && request.resource.data.status == 'confirmed')
+            || (request.auth.uid == resource.data.clientId
+              && resource.data.status in ['requested', 'confirmed'] && request.resource.data.status == 'cancelled'));
+    }
+
+    // Health notes are private to the client who wrote them.
+    match /healthNotes/{noteId} {
+      allow read, delete: if signedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['ownerId', 'text'])
+        && request.resource.data.ownerId == request.auth.uid;
+      allow update: if signedIn() && resource.data.ownerId == request.auth.uid && changedOnly(['text']);
+    }
+  }
+}
