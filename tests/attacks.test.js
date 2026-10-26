@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { assertFails } from '@firebase/rules-unit-testing';
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore';
 import { start } from './helpers.js';
 
 test('1 flawed: anyone, without signing in, reads every client\'s health notes and can rewrite them', async () => {
@@ -20,6 +20,8 @@ test('1 fixed: notes are private to their author, signed in or not', async () =>
   await assertFails(getDocs(collection(app.as(null), 'healthNotes')));
   await assertFails(getDoc(doc(app.as('ben'), 'healthNotes/n1')));
   await assertFails(updateDoc(doc(app.as('ben'), 'healthNotes/n1'), { text: 'deleted' }));
+  await assertFails(deleteDoc(doc(app.as('ben'), 'healthNotes/n1')));
+  await assertFails(getDocs(query(collection(app.as('ben'), 'healthNotes'), where('ownerId', '==', 'ana'))));
   await app.close();
 });
 
@@ -43,6 +45,8 @@ test('3 flawed: a client gives himself the premium plan and the coach role, then
   await updateDoc(doc(ben, 'users/ben'), { plan: 'premium', role: 'coach' });
   const workout = await getDoc(doc(ben, 'workouts/w-pro'));
   assert.equal(workout.data().title, '12-week strength plan');
+  await setDoc(doc(ben, 'coachProfiles/ben'), { name: 'Ben', bio: '', rateCents: 1 });
+  assert.equal((await getDoc(doc(app.as('ana'), 'coachProfiles/ben'))).data().rateCents, 1);
   await app.close();
 });
 
@@ -53,6 +57,8 @@ test('3 fixed: plan and role cannot be written by the app, and premium stays clo
   await assertFails(updateDoc(doc(ben, 'users/ben'), { role: 'coach' }));
   await assertFails(setDoc(doc(app.as('dan'), 'users/dan'), { name: 'Dan', email: 'dan@example.test', role: 'client', plan: 'premium' }));
   await assertFails(getDoc(doc(ben, 'workouts/w-pro')));
+  await assertFails(setDoc(doc(ben, 'coachProfiles/ben'), { name: 'Ben', bio: '', rateCents: 6000 }));
+  await assertFails(updateDoc(doc(app.as('cora'), 'coachProfiles/cora'), { rateCents: -100 }));
   await app.close();
 });
 
@@ -78,6 +84,7 @@ test('4 fixed: status and price follow the booking rules', async () => {
   await assertFails(setDoc(doc(ben, 'bookings/b2'), { clientId: 'ben', coachId: 'cora', slot: '2026-11-04T18:00', status: 'confirmed', priceCents: 6000 }));
   await assertFails(setDoc(doc(ben, 'bookings/b2'), { clientId: 'ben', coachId: 'cora', slot: '2026-11-04T18:00', status: 'requested', priceCents: 1 }));
   await assertFails(setDoc(doc(ben, 'bookings/b3'), { clientId: 'ana', coachId: 'cora', slot: '2026-11-05T07:00', status: 'requested', priceCents: 6000 }));
+  await assertFails(setDoc(doc(ben, 'bookings/b5'), { clientId: 'ben', coachId: 'cora', status: 'requested', priceCents: 6000 }));
   await assertFails(setDoc(doc(ben, 'bookings/b4'), { clientId: 'ben', coachId: 'ana', slot: '2026-11-05T07:00', status: 'requested', priceCents: 6000 }));
   await app.close();
 });

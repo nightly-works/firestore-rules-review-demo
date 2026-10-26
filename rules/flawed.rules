@@ -25,7 +25,7 @@ service cloud.firestore {
     }
 
     match /healthNotes/{noteId} {
-      allow read, write: if request.time < timestamp.date(2026, 12, 1);
+      allow read, write: if request.time < timestamp.date(2030, 1, 1);
     }
   }
 }

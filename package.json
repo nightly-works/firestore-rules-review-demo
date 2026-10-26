@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "firebase emulators:exec --only firestore --project demo-coachly \"node --test --test-concurrency=1 tests/*.test.js\""
+    "test": "firebase emulators:exec --only firestore --project demo-coaching \"node --test --test-concurrency=1 tests/*.test.js\""
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^6.0.0",
